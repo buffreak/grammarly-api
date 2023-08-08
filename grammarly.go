@@ -12,10 +12,10 @@ import (
 )
 
 type GrammarlyWS struct {
-	Ws             *websocket.Conn
-	Response       chan string
-	Text           string
-	CookieFileName string
+	Ws       *websocket.Conn
+	Response chan string
+	Text     string
+	Cookie   string
 }
 
 func (gws *GrammarlyWS) SetCookiePath(filename string) error {
@@ -23,7 +23,7 @@ func (gws *GrammarlyWS) SetCookiePath(filename string) error {
 	if err != nil {
 		return fmt.Errorf("failed load cookie grammarly: %+v", err)
 	}
-	gws.CookieFileName = strings.TrimSpace(string(cookie))
+	gws.Cookie = strings.TrimSpace(string(cookie))
 	return nil
 }
 
@@ -31,7 +31,7 @@ func (gws *GrammarlyWS) ConnectWS() error {
 
 	ws, _, err := websocket.DefaultDialer.Dial("wss://capi.grammarly.com/freews", http.Header{
 		"Origin":     {"moz-extension://f98d44e2-500b-486c-802d-28d8c4608ac5"},
-		"Cookie":     {gws.CookieFileName},
+		"Cookie":     {gws.Cookie},
 		"User-Agent": {"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/116.0"},
 		"Host":       {"capi.grammarly.com"},
 	})
