@@ -18,6 +18,45 @@ type GrammarlyWS struct {
 	Cookie   string
 }
 
+type GrammarlyParts struct {
+	Text string `json:"text"`
+	Meta struct {
+		Label string `json:"label"`
+	} `json:"meta"`
+}
+
+type GrammarlyLeftOrRight struct {
+	Type         string           `json:"type"`
+	Parts        []GrammarlyParts `json:"parts"`
+	Alternatives []struct {
+		Preview struct {
+			Parts []GrammarlyParts `json:"parts"`
+		} `json:"preview"`
+	} `json:"alternatives"`
+}
+
+type GrammarlyResponse struct {
+	MessageId     string                 `json:"messageId"`
+	OutcomeScores map[string]interface{} `json:"outcomeScores"`
+	Sdui          struct {
+		Child struct {
+			Child struct {
+				Views struct {
+					DefaultSuggestion struct {
+						Children []struct {
+							Type     string `json:"type"`
+							Children []struct {
+								Left  []GrammarlyLeftOrRight `json:"left"`
+								Right []GrammarlyLeftOrRight `json:"right"`
+							} `json:"children"`
+						} `json:"children"`
+					} `json:"default-suggestion"`
+				} `json:"views"`
+			} `json:"child"`
+		} `json:"child"`
+	} `json:"sdui"`
+}
+
 func (gws *GrammarlyWS) SetCookiePath(filename string) error {
 	cookie, err := os.ReadFile(filename)
 	if err != nil {
@@ -73,86 +112,54 @@ func (gws *GrammarlyWS) ParseResponse() (string, error) {
 	defer gws.Ws.Close()
 	go gws.readResponse()
 	for {
-		var body map[string]interface{}
+		var grammarlyResp = GrammarlyResponse{}
 		buffer := <-gws.Response
-		if err := json.Unmarshal([]byte(buffer), &body); err != nil {
+		if err := json.Unmarshal([]byte(buffer), &grammarlyResp); err != nil {
 			fmt.Printf("error parse response ws from grammarly: %+v\n", err)
 			continue
 		}
-		if _, ok := body["messageId"]; ok {
-			if sdui, ok := body["sdui"].(map[string]interface{}); ok {
-				if child, ok := sdui["child"].(map[string]interface{}); ok {
-					if child, ok := child["child"].(map[string]interface{}); ok {
-						if views, ok := child["views"].(map[string]interface{}); ok {
-							if defaultSuggestion, ok := views["default-suggestion"].(map[string]interface{}); ok {
-								if children, ok := defaultSuggestion["children"].([]interface{}); ok {
-									for _, data := range children {
-										if row, ok := data.(map[string]interface{}); ok {
-											if kindOf, ok := row["type"].(string); ok {
-												if kindOf == "column" {
-													if childrens, ok := row["children"].([]interface{}); ok {
-														for _, child := range childrens {
-															if data, ok := child.(map[string]interface{}); ok {
-																var subsets = []string{"left", "right"} // left has greater priority
-																for _, subset := range subsets {
-																	if dataSub, ok := data[subset].([]interface{}); ok {
-																		for _, sub := range dataSub {
-																			var listElement interface{}
-																			if data, ok := sub.(map[string]interface{}); ok {
-																				if parseType, ok := data["type"].(string); ok {
-																					if parseType == "block" {
-																						listElement = data["parts"]
-																					} else if parseType == "alternativeChoice" {
-																						if alternatives, ok := data["alternatives"].([]interface{}); ok {
-																							if preview, ok := alternatives[0].(map[string]interface{})["preview"].(map[string]interface{}); ok {
-																								listElement = preview["parts"]
-																							}
-																						}
-																					}
-																				}
-																				if parts, ok := listElement.([]interface{}); ok {
-																					var startText string = strings.Replace(parts[0].(map[string]interface{})["text"].(string), "…", "", -1)
-																					var endText string = strings.Replace(parts[len(parts)-1].(map[string]interface{})["text"].(string), "…", "", -1)
-																					var regexInlineWord *regexp.Regexp = regexp.MustCompile(startText + `(.*?)` + endText)
-																					var replacement string
-																					for i := 1; i < len(parts)-1; i++ {
-																						if section, ok := parts[i].(map[string]interface{}); ok {
-																							if meta, ok := section["meta"].(map[string]interface{}); ok {
-																								if label, ok := meta["label"].(string); ok {
-																									if regexp.MustCompile("(?mi)^insert line break").MatchString(label) {
-																										replacement = "\n"
-																										// or
-																										// replacement = " " // just add space and continue the lines
-																									} else if regexp.MustCompile("(?mi)^(insert) ").MatchString(label) {
-																										replacement = section["text"].(string)
-																									} else if regexp.MustCompile("(?mi)^(delete|remove) ").MatchString(label) {
-																										replacement = ""
-																									}
-																								}
-																							}
-																						}
-																					}
-																					gws.Text = regexInlineWord.ReplaceAllString(gws.Text, startText+replacement+endText)
-																				}
-																			}
-																		}
-																	}
-																}
-															}
-														}
-													}
-												}
-											}
-										}
-									}
+
+		if len(grammarlyResp.OutcomeScores) > 0 {
+			break
+		}
+
+		for _, data := range grammarlyResp.Sdui.Child.Child.Views.DefaultSuggestion.Children {
+			if data.Type == "column" {
+				for _, child := range data.Children {
+					var subsets = [][]GrammarlyLeftOrRight{child.Left, child.Right} // left has greater priority
+					for _, subset := range subsets {
+						for _, sub := range subset {
+							var listElement = []GrammarlyParts{}
+							if sub.Type == "block" {
+								listElement = sub.Parts
+							} else if sub.Type == "alternativeChoice" {
+								if len(sub.Alternatives) > 0 {
+									listElement = sub.Alternatives[0].Preview.Parts
 								}
 							}
+							regexRemoveChar := regexp.MustCompile(`…`)
+							var startText string = regexRemoveChar.ReplaceAllString(listElement[0].Text, "")
+							var endText string = regexRemoveChar.ReplaceAllString(listElement[len(listElement)-1].Text, "")
+							var regexInlineWord *regexp.Regexp = regexp.MustCompile(startText + `(.*?)` + endText)
+							var replacement string
+							for i := 1; i < len(listElement)-1; i++ {
+								if regexp.MustCompile("(?mi)^insert line break").MatchString(listElement[i].Meta.Label) {
+									// this statement will be fix soon with counter minimum words per paragraph
+									replacement = "\n"
+									// or
+									// replacement = " " // just add space and continue the lines
+								} else if regexp.MustCompile("(?mi)^(insert) ").MatchString(listElement[i].Meta.Label) {
+									replacement = listElement[i].Text
+								} else if regexp.MustCompile("(?mi)^(delete|remove) ").MatchString(listElement[i].Meta.Label) {
+									replacement = ""
+								}
+							}
+							regexRemoveMultiSpace := regexp.MustCompile(`( {2,})`)
+							gws.Text = regexRemoveMultiSpace.ReplaceAllString(regexInlineWord.ReplaceAllString(gws.Text, startText+replacement+endText), " ")
 						}
 					}
 				}
 			}
-		} else if _, ok := body["outcomeScores"]; ok {
-			break
 		}
 	}
 	return gws.Text, nil
