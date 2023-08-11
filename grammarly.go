@@ -11,11 +11,17 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+type Configuration struct {
+	WithNewline     bool
+	NewlineOverride string
+}
+
 type GrammarlyWS struct {
 	Ws       *websocket.Conn
 	Response chan string
 	Text     string
 	Cookie   string
+	Configuration
 }
 
 type GrammarlyParts struct {
@@ -144,10 +150,11 @@ func (gws *GrammarlyWS) ParseResponse() (string, error) {
 							var replacement string
 							for i := 1; i < len(listElement)-1; i++ {
 								if regexp.MustCompile("(?mi)^insert line break").MatchString(listElement[i].Meta.Label) {
-									// this statement will be fix soon with counter minimum words per paragraph
-									replacement = "\n"
-									// or
-									// replacement = " " // just add space and continue the lines
+									if gws.WithNewline {
+										replacement = gws.NewlineOverride
+									} else {
+										continue
+									}
 								} else if regexp.MustCompile("(?mi)^(insert) ").MatchString(listElement[i].Meta.Label) {
 									replacement = listElement[i].Text
 								} else if regexp.MustCompile("(?mi)^(delete|remove) ").MatchString(listElement[i].Meta.Label) {
