@@ -152,8 +152,6 @@ func (gws *GrammarlyWS) ParseResponse() (string, error) {
 								if regexp.MustCompile("(?mi)^insert line break").MatchString(listElement[i].Meta.Label) {
 									if gws.WithNewline {
 										replacement = gws.NewlineOverride
-									} else {
-										continue
 									}
 								} else if regexp.MustCompile("(?mi)^(insert) ").MatchString(listElement[i].Meta.Label) {
 									replacement = listElement[i].Text
