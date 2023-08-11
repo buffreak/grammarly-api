@@ -57,7 +57,7 @@ type GrammarlyResponse struct {
 	} `json:"sdui"`
 }
 
-func (gws *GrammarlyWS) SetCookiePath(filename string) error {
+func (gws *GrammarlyWS) SetCookieFile(filename string) error {
 	cookie, err := os.ReadFile(filename)
 	if err != nil {
 		return fmt.Errorf("failed load cookie grammarly: %+v", err)
