@@ -182,6 +182,11 @@ func (gws *GrammarlyWS) Login(email, password string) error {
 	if body.User.Type == "Free" {
 		return fmt.Errorf("error grammarly is not premium")
 	}
+	for _, cookies := range response.Header["Set-Cookie"] {
+		cookie := strings.Split(cookies, "; ")
+		gws.Cookie += cookie[0] + "; "
+	}
+	gws.Cookie = strings.TrimSpace(gws.Cookie)
 	return nil
 }
 
