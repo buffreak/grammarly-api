@@ -7,6 +7,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestLogin(t *testing.T) {
+	gws := &grammarly.GrammarlyWS{}
+	err := gws.Login("uasgdgjhasbdh@gmail.com", "asdasyu87a")
+	assert.Nil(t, err)
+}
+
 func TestDoConnection(t *testing.T) {
 	gws := &grammarly.GrammarlyWS{}
 	err := gws.ConnectWS()
